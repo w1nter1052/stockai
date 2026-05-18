@@ -7857,7 +7857,9 @@ window.UnifiedAnalysis = (function(){
 
   // 분석 결과 가져오기 (Claude API 호출)
   async function fetchAnalysis(apiKey){
-    if(!apiKey) throw new Error('AI 키가 등록되지 않았습니다');
+    // Worker 자동 연결되어 있으면 키 없어도 OK
+    const workerOn = (typeof WorkerProxy === 'object') && WorkerProxy.isEnabled();
+    if(!workerOn && !apiKey) throw new Error('AI 서비스 미연결 — 잠시 후 다시 시도해주세요');
 
     const periodKr = { short:'단기 (1~4주)', mid:'중기 (1~3개월)', long:'장기 (6개월+)' }[state.period];
     const styleKr = { aggressive:'공격형', balanced:'균형형', conservative:'보수형' }[state.style];
