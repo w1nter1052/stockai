@@ -4819,7 +4819,7 @@ function getAIModel(){
 window.WorkerProxy = (function(){
   const KEY_URL = 'sai_worker_url';
   // ⚠️ 출시 시 실제 Worker URL로 교체 (사용자 키 등록 불필요)
-  const DEFAULT_URL = 'https://stockai-proxy.maeulhang.workers.dev';
+  const DEFAULT_URL = 'https://stockai-proxy.hnsane.workers.dev';
   // 세션 단위 가용성 캐시: 첫 호출에서 네트워크 실패 시 false로 전환 → 이후 자동으로 사용자 키 폴백
   let _available = null; // null=미확인, true=가용, false=불가
   function getWorkerUrl(){ return localStorage.getItem(KEY_URL) || DEFAULT_URL; }
