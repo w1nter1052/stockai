@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockAI Pro 관리자 — 라이선스 발급/관리</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Pretendard Variable', 'Pretendard', -apple-system, sans-serif; background: #F7F8FA; color: #0F1419; padding: 24px; line-height: 1.6; }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #1A3A6B; letter-spacing: -.02em; }
+  h1 .v { font-size: 12px; color: #999; font-weight: 400; margin-left: 8px; }
+  .sub { font-size: 13px; color: #5F6368; margin-bottom: 20px; }
+  .card { background: #fff; border-radius: 12px; padding: 20px 22px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,.04); }
+  .ch { font-size: 14px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; letter-spacing: -.01em; }
+  .ch .badge { background: #2563EB; color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 6px; font-weight: 700; }
+  label { display: block; font-size: 12px; font-weight: 700; color: #444; margin-bottom: 4px; margin-top: 8px; }
+  input, select, textarea { width: 100%; border: 1px solid #ddd; border-radius: 7px; padding: 9px 11px; font-size: 13px; font-family: inherit; outline: none; transition: border .15s; }
+  input:focus, select:focus, textarea:focus { border-color: #2563EB; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  button { background: #2563EB; color: #fff; border: 0; padding: 10px 18px; border-radius: 7px; font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  button:hover { background: #1D4ED8; }
+  button.danger { background: #DC2626; }
+  button.danger:hover { background: #991B1B; }
+  button.warn { background: #EA580C; }
+  button.warn:hover { background: #C2410C; }
+  button.ghost { background: #f1f3f5; color: #0F1419; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  pre { background: #0F1419; color: #86EFAC; padding: 14px; border-radius: 8px; overflow-x: auto; font-size: 12px; font-family: 'Geist Mono', Consolas, monospace; line-height: 1.7; margin-top: 10px; max-height: 400px; overflow-y: auto; }
+  .ok { color: #15803D; background: #DCFCE7; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; margin-top: 10px; }
+  .err { color: #991B1B; background: #FEE2E2; padding: 8px 12px; border-radius: 6px; font-size: 12.5px; margin-top: 10px; }
+  .key { font-family: 'Geist Mono', Consolas, monospace; font-size: 13px; background: #FFF8E1; padding: 6px 10px; border-radius: 6px; border: 1px dashed #F5D793; user-select: all; }
+  .small { font-size: 11px; color: #5F6368; margin-top: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+  th { background: #F1F3F5; padding: 8px 10px; text-align: left; font-weight: 700; font-size: 11.5px; color: #444; }
+  td { padding: 8px 10px; border-bottom: 1px solid #eee; }
+  .tag { display: inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 5px; font-weight: 700; letter-spacing: .02em; }
+  .tag.pro { background: #FCEAE1; color: #C0532A; }
+  .tag.basic { background: #DBEAFE; color: #1E40AF; }
+  .tag.free { background: #F1F3F5; color: #5F6368; }
+  .tag.vip { background: #FEF3C7; color: #92400E; }
+  .tag.revoked { background: #FEE2E2; color: #991B1B; }
+  .tag.expired { background: #FEF3C7; color: #92400E; }
+  .tag.active { background: #DCFCE7; color: #15803D; }
+  details { background: #FAFBFC; border: 1px solid #eee; border-radius: 8px; padding: 10px 14px; margin-top: 10px; }
+  details summary { cursor: pointer; font-weight: 700; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>🎫 StockAI Pro 관리자 <span class="v">라이선스 발급/관리 v1.0</span></h1>
+  <div class="sub">마을항해 내부용 · 입금 확인 후 라이선스 발급 → 고객에게 키 전달</div>
+
+  <!-- ─ 1. 워커 설정 ─ -->
+  <div class="card">
+    <div class="ch"><span class="badge">1</span> 워커 연결 설정</div>
+    <label>워커 URL</label>
+    <input id="cfg-url" placeholder="https://stockai-proxy.{your}.workers.dev" value="https://stockai-proxy.workers.dev">
+    <label>관리자 시크릿 (ADMIN_SECRET)</label>
+    <input id="cfg-secret" type="password" placeholder="Cloudflare Secret에 등록한 값">
+    <div class="small">⚠️ 이 시크릿은 브라우저(localStorage)에만 저장. 새로고침 후에도 유지. 공용 PC 사용 X.</div>
+    <div class="btn-row">
+      <button onclick="saveCfg()">💾 저장 + 워커 헬스체크</button>
+      <button class="ghost" onclick="document.getElementById('cfg-secret').value='';saveCfg()">🗑 시크릿 삭제</button>
+    </div>
+    <div id="cfg-result"></div>
+  </div>
+
+  <!-- ─ 2. 새 라이선스 발급 ─ -->
+  <div class="card">
+    <div class="ch"><span class="badge">2</span> 새 라이선스 발급</div>
+    <div class="row">
+      <div>
+        <label>고객 이메일 *</label>
+        <input id="iss-email" placeholder="customer@example.com">
+      </div>
+      <div>
+        <label>이름 / 닉네임</label>
+        <input id="iss-name" placeholder="홍길동">
+      </div>
+    </div>
+    <div class="row3">
+      <div>
+        <label>플랜 *</label>
+        <select id="iss-plan">
+          <option value="basic">BASIC (9,900원/월 · 300 AI/월)</option>
+          <option value="pro" selected>PRO ⭐ (19,900원/월 · 2000 AI/월)</option>
+          <option value="vip">VIP 👑 (29,900원/월 · 10000 AI/월)</option>
+          <option value="free">무료 체험 (20 AI/월)</option>
+        </select>
+      </div>
+      <div>
+        <label>기간 (일)</label>
+        <select id="iss-days">
+          <option value="7">7일 (체험)</option>
+          <option value="30" selected>30일 (월간)</option>
+          <option value="90">90일 (분기)</option>
+          <option value="180">180일</option>
+          <option value="365">365일 (연간)</option>
+        </select>
+      </div>
+      <div>
+        <label>커스텀 키 (선택)</label>
+        <input id="iss-key" placeholder="자동 생성">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>주문번호 (입금자명에 사용된)</label>
+        <input id="iss-order" placeholder="예: SAI1AB2C-XYZ">
+      </div>
+      <div>
+        <label>결제 금액 (원)</label>
+        <input id="iss-amount" type="number" placeholder="예: 19900">
+      </div>
+    </div>
+    <label>메모 (입금 내역 등)</label>
+    <input id="iss-note" placeholder="예: 5/12 국민은행 입금 확인, 송금자 홍길동">
+    <div class="btn-row">
+      <button onclick="issueLicense()">🎫 라이선스 발급</button>
+    </div>
+    <div id="iss-result"></div>
+  </div>
+
+  <!-- ─ 3. 라이선스 조회 / 관리 ─ -->
+  <div class="card">
+    <div class="ch"><span class="badge">3</span> 라이선스 조회 · 관리 (워커 KV)</div>
+    <div class="row">
+      <div>
+        <label>전체 발급 목록 (해시만 표시)</label>
+        <button onclick="listLicenses()" style="width:100%">📋 전체 조회</button>
+      </div>
+      <div>
+        <label>이메일로 검색</label>
+        <div style="display:flex;gap:6px">
+          <input id="lookup-email" placeholder="customer@example.com" style="flex:1">
+          <button onclick="lookupByEmail()" class="ghost">🔍 검색</button>
+        </div>
+      </div>
+    </div>
+    <div id="list-result"></div>
+  </div>
+
+  <!-- ─ 3-B. 내 발급 히스토리 (운영자 PC 백업) ─ -->
+  <div class="card" style="background:linear-gradient(135deg,#F0F7FF 0%,#FFFFFF 100%);border:1px solid #BFDBFE;">
+    <div class="ch"><span class="badge" style="background:#2563EB;">3-B</span> 내 발급 히스토리 <span style="font-size:11px;font-weight:500;color:#5F6368;margin-left:6px;">(이 PC 백업 · 평문 키 복사 가능)</span></div>
+    <div style="font-size:12px;color:#3C4043;line-height:1.6;margin-bottom:10px;">⚠️ 워커 KV는 보안상 해시만 저장합니다. 이 PC localStorage에 발급된 평문 키를 백업해서 다시 볼 수 있게 합니다. <strong>다른 운영자가 같은 PC에서 접근하지 않게 주의하세요.</strong></div>
+    <div class="row">
+      <div>
+        <label>이 PC에 백업된 키 검색</label>
+        <input id="bk-search" placeholder="이메일·이름·주문번호·메모 일부 (빈 칸=전체)" oninput="renderIssuedHistory()">
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:6px;">
+        <button onclick="renderIssuedHistory()" style="flex:1">🔄 새로고침</button>
+        <button class="ghost" onclick="exportIssuedHistory()">📥 백업 내보내기</button>
+        <button class="ghost" onclick="document.getElementById('bk-import-file').click()">📤 백업 가져오기</button>
+        <input id="bk-import-file" type="file" accept="application/json" style="display:none;" onchange="importIssuedHistory(this)">
+      </div>
+    </div>
+    <div id="bk-result"></div>
+    <details style="margin-top:10px;">
+      <summary style="font-size:12px;color:#5F6368;">🗑 전체 백업 삭제 (위험)</summary>
+      <button class="danger" onclick="if(confirm('이 PC의 발급 키 백업을 모두 삭제할까요?\\n워커 KV는 그대로 유지되며, 이 PC에서만 키를 다시 볼 수 없게 됩니다.')){localStorage.removeItem('saiIssuedKeys');renderIssuedHistory();alert('삭제 완료');}" style="margin-top:8px;">🗑 전체 삭제</button>
+    </details>
+  </div>
+
+  <!-- ─ 4. 만료 연장 / 취소 ─ -->
+  <div class="card">
+    <div class="ch"><span class="badge">4</span> 만료 연장 / 취소</div>
+    <label>라이선스 키</label>
+    <input id="mng-key" placeholder="SAI-XXXX-XXXX-YYMM">
+    <div class="row">
+      <div>
+        <label>연장 기간 (일)</label>
+        <select id="mng-days">
+          <option value="7">7일</option>
+          <option value="30" selected>30일 (월간 갱신)</option>
+          <option value="90">90일</option>
+          <option value="180">180일</option>
+          <option value="365">365일</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button class="warn" onclick="extendLicense()">📅 만료 연장</button>
+        <button class="danger" onclick="revokeLicense()">🚫 즉시 취소</button>
+      </div>
+    </div>
+    <div id="mng-result"></div>
+  </div>
+
+  <!-- ─ 5. 결제 주문 관리 (앱에서 신청한 주문 확인) ─ -->
+  <div class="card" style="background:linear-gradient(135deg,#FFFBEB 0%,#FFFFFF 100%);border:1px solid #FED7AA;">
+    <div class="ch"><span class="badge" style="background:#EA580C;">5</span> 입금 대기 주문 안내</div>
+    <div style="font-size:12.5px;color:#3C4043;line-height:1.65;">
+      앱에서 사용자가 결제 신청하면 <strong>주문번호</strong>가 생성되고 입금자명에 사용됩니다. 운영자는:
+      <ol style="margin:10px 0 10px 20px;font-size:12px;color:#5F6368;">
+        <li>은행 앱에서 입금자명 (SAI...) 확인</li>
+        <li>이 페이지 [2. 새 라이선스 발급]에서 해당 이메일·플랜·주문번호 입력</li>
+        <li>발급된 키 → 자동 메일 작성 → 고객에게 전송</li>
+        <li>입금자명에 주문번호 누락 시 → 송금자명·금액·시각으로 매칭 후 처리</li>
+      </ol>
+      <strong style="color:#92400E;">⏳ Webhook 자동 매칭 (오픈뱅킹 연동) — Phase 2 예정</strong>
+    </div>
+  </div>
+
+  <!-- ─ 6. 빠른 안내 ─ -->
+  <div class="card">
+    <details>
+      <summary>📖 운영 가이드 (펼치기)</summary>
+      <div style="font-size:12.5px;line-height:1.9;margin-top:10px;color:#3C4043">
+        <b>일반 운영 흐름:</b><br>
+        1. 고객이 StockAI Pro에서 구독 신청 → 결제 모달 → 자동 주문번호 생성 (SAI...)<br>
+        2. 고객이 안내된 계좌로 입금 (입금자명 = 주문번호)<br>
+        3. 운영자가 입금 확인 후 [2. 새 라이선스 발급]에서 발급<br>
+        4. 발급 키 → 자동 메일 작성 → 고객 메일로 전송<br>
+        5. 고객이 StockAI Pro 설정에서 키 입력 → 즉시 PRO 활성화<br><br>
+
+        <b>월간 갱신:</b><br>
+        - [3-B. 내 발급 히스토리]에서 만료 임박 키 확인<br>
+        - 갱신 입금받으면 [4. 만료 연장 +30일]<br><br>
+
+        <b>키 분실 (고객 문의):</b><br>
+        - [3-B. 내 발급 히스토리]에서 이메일 검색<br>
+        - [📋 복사] 또는 [📧 재전송] 클릭<br><br>
+
+        <b>취소/환불:</b><br>
+        - [4. 즉시 취소] 처리<br>
+        - 환불 처리 별도 (계좌이체로 입금자에게)<br><br>
+
+        <b>플랜별 한도 (월간):</b><br>
+        - FREE: 20회 AI 분석<br>
+        - BASIC: 300회<br>
+        - PRO ⭐: 2,000회<br>
+        - VIP 👑: 10,000회<br><br>
+
+        <b>주의:</b><br>
+        - 워커 KV는 해시만 저장 (보안)<br>
+        - 평문 키는 [3-B] 운영자 PC 백업에서만 조회<br>
+        - 백업은 정기적으로 [📥 내보내기]로 안전 보관 권장
+      </div>
+    </details>
+  </div>
+
+</div>
+
+<script>
+const LS_URL = 'saiAdminUrl';
+const LS_SEC = 'saiAdminSecret';
+const LS_ISSUED = 'saiIssuedKeys';
+
+// 초기 로드: 저장된 설정 복원
+window.addEventListener('DOMContentLoaded', () => {
+  const url = localStorage.getItem(LS_URL);
+  const sec = localStorage.getItem(LS_SEC);
+  if (url) document.getElementById('cfg-url').value = url;
+  if (sec) document.getElementById('cfg-secret').value = sec;
+  setTimeout(renderIssuedHistory, 100);
+});
+
+function getCfg() {
+  return {
+    url: document.getElementById('cfg-url').value.trim().replace(/\/$/, ''),
+    secret: document.getElementById('cfg-secret').value.trim(),
+  };
+}
+
+async function saveCfg() {
+  const c = getCfg();
+  localStorage.setItem(LS_URL, c.url);
+  if (c.secret) localStorage.setItem(LS_SEC, c.secret);
+  else localStorage.removeItem(LS_SEC);
+  const r = document.getElementById('cfg-result');
+  r.innerHTML = '<div class="ok">💾 저장됨. 헬스체크 중...</div>';
+  try {
+    const res = await fetch(c.url + '/health');
+    const json = await res.json();
+    r.innerHTML = '<div class="ok">✅ 워커 정상 (' + (json.service || 'stockai-proxy') + ')</div><pre>' + JSON.stringify(json, null, 2) + '</pre>';
+  } catch(e) {
+    r.innerHTML = '<div class="err">❌ 워커 접속 실패: ' + e.message + '</div>';
+  }
+}
+
+async function adminFetch(path, init) {
+  const c = getCfg();
+  if (!c.secret) { alert('관리자 시크릿을 먼저 입력하세요'); throw new Error('no secret'); }
+  init = init || {};
+  init.headers = Object.assign({ 'Content-Type': 'application/json', 'x-admin-secret': c.secret }, init.headers || {});
+  const res = await fetch(c.url + path, init);
+  const text = await res.text();
+  let json; try { json = JSON.parse(text); } catch(e) { json = { error: 'bad_json', raw: text }; }
+  return { status: res.status, json };
+}
+
+async function issueLicense() {
+  const email = document.getElementById('iss-email').value.trim();
+  const name = document.getElementById('iss-name').value.trim();
+  const plan = document.getElementById('iss-plan').value;
+  const days = parseInt(document.getElementById('iss-days').value, 10);
+  const key = document.getElementById('iss-key').value.trim() || undefined;
+  const orderId = document.getElementById('iss-order').value.trim();
+  const amount = parseInt(document.getElementById('iss-amount').value, 10) || 0;
+  const note = document.getElementById('iss-note').value.trim();
+  if (!email) { alert('고객 이메일은 필수입니다'); return; }
+  const r = document.getElementById('iss-result');
+  r.innerHTML = '<div class="ok">⏳ 발급 중...</div>';
+
+  // 만료일 계산 (워커가 days 받지 못하면 직접 계산)
+  const expiresAt = Date.now() + days * 86400000;
+
+  try {
+    const { status, json } = await adminFetch('/admin/issue', {
+      method: 'POST',
+      body: JSON.stringify({ email, name, plan, days, key, orderId, paidAmount: amount, paidMethod: 'bank_transfer', expiresAt, note }),
+    });
+    if (status === 200 && (json.ok || json.license)) {
+      const lic = json.license || json;
+      const issuedKey = lic.key || json.key;
+      const planLabel = { free: '무료 체험', basic: 'BASIC', pro: 'PRO ⭐', vip: 'VIP 👑' }[plan] || plan.toUpperCase();
+      const issued = lic.issuedAt ? new Date(lic.issuedAt).toISOString() : new Date().toISOString();
+      const expires = lic.expiresAt ? new Date(lic.expiresAt).toISOString() : new Date(expiresAt).toISOString();
+      const mailto = 'mailto:' + email + '?subject=' + encodeURIComponent('[StockAI Pro] ' + planLabel + ' 라이선스 키 발급') +
+        '&body=' + encodeURIComponent(
+          '안녕하세요' + (name ? ' ' + name + '님' : '') + ', 마을항해입니다.\n\n신청하신 ' + planLabel + ' 플랜 라이선스를 발급해드렸습니다.\n\n' +
+          '■ 라이선스 키: ' + issuedKey + '\n' +
+          '■ 플랜: ' + planLabel + '\n' +
+          '■ 발급일: ' + issued.slice(0,10) + '\n' +
+          '■ 만료일: ' + expires.slice(0,10) + '\n' +
+          (orderId ? '■ 주문번호: ' + orderId + '\n' : '') +
+          (amount ? '■ 결제 금액: ' + amount.toLocaleString() + '원\n' : '') +
+          '\nStockAI Pro 설정 페이지에서 [AI 키 등록] → 위 라이선스 키를 입력하시면 즉시 활성화됩니다.\n\n' +
+          'https://stockai.maeulhang.kr\n\n' +
+          '※ 키 분실 시 재발급 가능합니다. 이 이메일로 회신 주세요.\n\n' +
+          '감사합니다.\n마을항해\nsadad1052@naver.com'
+        );
+
+      // 운영자 PC localStorage 백업
+      saveIssuedKey({ key: issuedKey, plan, email, name, org:'', orderId, amount, note, issued, expires });
+
+      r.innerHTML = '<div class="ok">✅ 발급 완료. 이 키를 고객에게 전달하세요. (이 PC에 백업됨 → [3-B] 카드에서 다시 조회 가능)</div>' +
+        '<div style="margin-top:10px"><div class="small">라이선스 키:</div><div class="key">' + issuedKey + '</div></div>' +
+        '<div style="margin-top:8px"><b>플랜:</b> ' + planLabel + ' · <b>발급:</b> ' + issued.slice(0,10) + ' · <b>만료:</b> ' + expires.slice(0,10) + (orderId ? ' · <b>주문:</b> ' + orderId : '') + '</div>' +
+        '<div class="btn-row"><button onclick="navigator.clipboard.writeText(\'' + issuedKey + '\').then(()=>alert(\'복사됨\'))">📋 키 복사</button>' +
+        '<a href="' + mailto + '"><button class="warn">📧 메일 작성</button></a></div>';
+      if(typeof renderIssuedHistory === 'function') renderIssuedHistory();
+    } else {
+      r.innerHTML = '<div class="err">❌ ' + (json.error || 'fail') + ': ' + (json.message || JSON.stringify(json)) + '</div>';
+    }
+  } catch(e) {
+    r.innerHTML = '<div class="err">❌ ' + e.message + '</div>';
+  }
+}
+
+async function listLicenses() {
+  const r = document.getElementById('list-result');
+  r.innerHTML = '<div class="ok">⏳ 조회 중...</div>';
+  try {
+    const { status, json } = await adminFetch('/admin/list', { method: 'GET' });
+    if (status === 200 && json.ok) {
+      r.innerHTML = '<div class="ok">✅ ' + json.count + '개 발급됨 (해시만 표시)</div>' +
+        '<table><thead><tr><th>키 해시</th></tr></thead><tbody>' +
+        (json.keys || []).map(k => '<tr><td><code style="font-size:11px;">' + k + '</code></td></tr>').join('') +
+        '</tbody></table>' +
+        '<div class="small" style="margin-top:10px;">⚠️ 워커 KV는 해시만 저장합니다. 평문 키 조회는 [3-B 내 발급 히스토리]에서 가능합니다.</div>';
+    } else {
+      r.innerHTML = '<div class="err">❌ ' + (json.error || 'fail') + '</div>';
+    }
+  } catch(e) {
+    r.innerHTML = '<div class="err">❌ ' + e.message + '</div>';
+  }
+}
+
+async function lookupByEmail() {
+  const email = document.getElementById('lookup-email').value.trim();
+  if (!email) { alert('이메일 입력'); return; }
+  // 워커 KV에 이메일별 인덱스가 없으므로 운영자 PC 백업에서 검색
+  const arr = getIssuedKeys();
+  const filtered = arr.filter(x => (x.email||'').toLowerCase() === email.toLowerCase());
+  const r = document.getElementById('list-result');
+  if (filtered.length === 0) {
+    r.innerHTML = '<div class="ok" style="background:#FEF3C7;color:#92400E;">📭 이 PC 백업에서 ' + email + ' 로 발급된 키 없음. 다른 운영자 PC에서 발급됐을 수 있습니다.</div>';
+    return;
+  }
+  const rows = filtered.map(k => '<tr><td><div class="key" style="font-size:11.5px;">' + k.key + '</div></td>' +
+    '<td><span class="tag ' + k.plan + '">' + (k.plan||'free').toUpperCase() + '</span></td>' +
+    '<td>' + (k.issued ? k.issued.slice(0,10) : '-') + '</td>' +
+    '<td>' + (k.expires ? k.expires.slice(0,10) : '-') + '</td>' +
+    '<td><button onclick="navigator.clipboard.writeText(\'' + k.key + '\').then(()=>alert(\'복사됨\'))" style="padding:5px 10px;font-size:11px;">📋</button></td></tr>').join('');
+  r.innerHTML = '<div class="ok">✅ ' + email + ' — ' + filtered.length + '개 키 (이 PC 백업)</div>' +
+    '<table><thead><tr><th>키 (평문)</th><th>플랜</th><th>발급</th><th>만료</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>';
+}
+
+async function extendLicense() {
+  const key = document.getElementById('mng-key').value.trim();
+  const days = parseInt(document.getElementById('mng-days').value, 10);
+  if (!key) { alert('라이선스 키 입력'); return; }
+  if (!confirm(days + '일 연장하시겠습니까?')) return;
+  const r = document.getElementById('mng-result');
+  r.innerHTML = '<div class="ok">⏳ 연장 중...</div>';
+  try {
+    const { status, json } = await adminFetch('/admin/extend', {
+      method: 'POST',
+      body: JSON.stringify({ key, days }),
+    });
+    if (status === 200 && json.ok) {
+      r.innerHTML = '<div class="ok">✅ 연장 완료. 새 만료일: ' + (json.expires||'').slice(0,10) + '</div>';
+      // 로컬 백업도 업데이트
+      const arr = getIssuedKeys();
+      const found = arr.find(x => x.key === key);
+      if (found) {
+        const base = found.expires && new Date(found.expires) > new Date() ? new Date(found.expires) : new Date();
+        found.expires = new Date(base.getTime() + days * 86400000).toISOString();
+        localStorage.setItem(LS_ISSUED, JSON.stringify(arr));
+        renderIssuedHistory();
+      }
+    } else {
+      r.innerHTML = '<div class="err">❌ ' + (json.error || 'fail') + ': ' + (json.message || '') + '</div>';
+    }
+  } catch(e) {
+    r.innerHTML = '<div class="err">❌ ' + e.message + '</div>';
+  }
+}
+
+async function revokeLicense() {
+  const key = document.getElementById('mng-key').value.trim();
+  if (!key) { alert('라이선스 키 입력'); return; }
+  if (!confirm('정말 이 라이선스를 즉시 취소하시겠습니까?\n사용자는 다음 호출부터 차단됩니다.')) return;
+  const r = document.getElementById('mng-result');
+  r.innerHTML = '<div class="ok">⏳ 취소 중...</div>';
+  try {
+    const { status, json } = await adminFetch('/admin/revoke', {
+      method: 'POST',
+      body: JSON.stringify({ key }),
+    });
+    if (status === 200 && json.ok) {
+      r.innerHTML = '<div class="ok">✅ 취소 완료</div>';
+      // 로컬 백업에 revoked 마크
+      const arr = getIssuedKeys();
+      const found = arr.find(x => x.key === key);
+      if (found) { found.revoked = true; found.revokedAt = new Date().toISOString(); localStorage.setItem(LS_ISSUED, JSON.stringify(arr)); renderIssuedHistory(); }
+    } else {
+      r.innerHTML = '<div class="err">❌ ' + (json.error || 'fail') + ': ' + (json.message || '') + '</div>';
+    }
+  } catch(e) {
+    r.innerHTML = '<div class="err">❌ ' + e.message + '</div>';
+  }
+}
+
+// ─────────────── 운영자 PC 백업 (3-B) ───────────────
+function getIssuedKeys(){
+  try { return JSON.parse(localStorage.getItem(LS_ISSUED) || '[]'); } catch(e){ return []; }
+}
+function saveIssuedKey(entry){
+  const arr = getIssuedKeys();
+  arr.unshift({ ...entry, backedUpAt: new Date().toISOString() });
+  if(arr.length > 2000) arr.length = 2000;
+  try { localStorage.setItem(LS_ISSUED, JSON.stringify(arr)); } catch(e){ alert('백업 실패: '+e.message); }
+}
+function renderIssuedHistory(){
+  const q = (document.getElementById('bk-search')?.value || '').trim().toLowerCase();
+  const arr = getIssuedKeys();
+  const r = document.getElementById('bk-result');
+  if(!r) return;
+  const filtered = q ? arr.filter(x =>
+    (x.email||'').toLowerCase().includes(q) ||
+    (x.name||'').toLowerCase().includes(q) ||
+    (x.orderId||'').toLowerCase().includes(q) ||
+    (x.note||'').toLowerCase().includes(q) ||
+    (x.key||'').toLowerCase().includes(q)
+  ) : arr;
+  if(filtered.length === 0){
+    r.innerHTML = '<div class="ok" style="background:#F1F3F5;color:#5F6368;margin-top:10px;">' + (arr.length===0 ? '📭 백업된 키 없음. 새로 발급하면 자동으로 이 PC에 저장됩니다.' : '🔍 검색 결과 없음 ('+arr.length+'개 중 0개 매칭)') + '</div>';
+    return;
+  }
+  const rows = filtered.map((x, i) => {
+    const planTag = '<span class="tag '+(x.plan||'free')+'">'+(x.plan||'free').toUpperCase()+'</span>';
+    const exp = x.expires ? new Date(x.expires) : null;
+    const expired = exp && exp < new Date();
+    const statusTag = x.revoked ? '<span class="tag revoked">취소</span>' : (expired ? '<span class="tag expired">만료</span>' : '<span class="tag active">유효</span>');
+    return '<tr>' +
+      '<td style="font-family:Geist Mono,monospace;font-size:11.5px;background:#FFF8E1;padding:6px 8px;border-radius:4px;user-select:all;">'+x.key+'</td>' +
+      '<td>'+planTag+'</td>' +
+      '<td>'+(x.email||'-')+(x.name?' <span style="color:#5F6368;font-size:11px;">('+x.name+')</span>':'')+'</td>' +
+      '<td style="font-size:11.5px;color:#5F6368;font-family:Geist Mono,monospace;">'+(x.orderId||'-')+'</td>' +
+      '<td>'+(x.issued?x.issued.slice(0,10):'-')+'</td>' +
+      '<td>'+(x.expires?x.expires.slice(0,10):'-')+'</td>' +
+      '<td>'+statusTag+'</td>' +
+      '<td style="white-space:nowrap;">' +
+        '<button onclick="navigator.clipboard.writeText(\''+x.key+'\').then(()=>alert(\'복사됨: '+x.key.slice(0,16)+'...\'))" style="padding:5px 10px;font-size:11px;">📋</button> ' +
+        '<button class="warn" onclick="resendKeyMail('+i+')" style="padding:5px 10px;font-size:11px;">📧</button> ' +
+        '<button class="ghost" onclick="removeIssuedKey('+i+')" style="padding:5px 10px;font-size:11px;color:#DC2626;">🗑</button>' +
+      '</td></tr>';
+  }).join('');
+  r.innerHTML = '<div class="ok">✅ '+filtered.length+'개'+(q?' / 전체 '+arr.length:'')+'</div>' +
+    '<div style="overflow-x:auto;margin-top:10px;"><table>' +
+    '<thead><tr><th>키</th><th>플랜</th><th>이메일</th><th>주문번호</th><th>발급</th><th>만료</th><th>상태</th><th>액션</th></tr></thead>' +
+    '<tbody>'+rows+'</tbody></table></div>';
+}
+function removeIssuedKey(idx){
+  const arr = getIssuedKeys();
+  if(!confirm('이 백업 기록을 삭제할까요?\n('+arr[idx]?.key+')\n워커 KV는 그대로 유지됩니다.')) return;
+  arr.splice(idx, 1);
+  try { localStorage.setItem(LS_ISSUED, JSON.stringify(arr)); } catch(e){}
+  renderIssuedHistory();
+}
+function resendKeyMail(idx){
+  const x = getIssuedKeys()[idx];
+  if(!x || !x.email) { alert('이메일 정보 없음'); return; }
+  const planLabel = { free: '무료 체험', basic: 'BASIC', pro: 'PRO ⭐', vip: 'VIP 👑' }[x.plan] || x.plan;
+  const mailto = 'mailto:' + x.email + '?subject=' + encodeURIComponent('[StockAI Pro] ' + planLabel + ' 라이선스 키 재전송') +
+    '&body=' + encodeURIComponent(
+      '안녕하세요' + (x.name ? ' ' + x.name + '님' : '') + ', 마을항해입니다.\n\n요청하신 ' + planLabel + ' 플랜 라이선스 키를 다시 보내드립니다.\n\n' +
+      '■ 라이선스 키: ' + x.key + '\n' +
+      '■ 플랜: ' + planLabel + '\n' +
+      '■ 발급일: ' + (x.issued||'').slice(0,10) + '\n' +
+      '■ 만료일: ' + (x.expires||'').slice(0,10) + '\n\n' +
+      'StockAI Pro 설정 페이지에서 [AI 키 등록] → 위 라이선스 키를 입력하시면 즉시 활성화됩니다.\n\n' +
+      'https://stockai.maeulhang.kr\n\n' +
+      '감사합니다.\n마을항해\nsadad1052@naver.com'
+    );
+  window.location.href = mailto;
+}
+function exportIssuedHistory(){
+  const arr = getIssuedKeys();
+  if(arr.length === 0){ alert('백업된 키가 없습니다'); return; }
+  const blob = new Blob([JSON.stringify(arr, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'stockai_issued_keys_' + new Date().toISOString().slice(0,10) + '.json';
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url), 1000);
+}
+function importIssuedHistory(input){
+  const file = input.files?.[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const arr = JSON.parse(e.target.result);
+      if(!Array.isArray(arr)) throw new Error('JSON 배열 형식이 아닙니다');
+      const existing = getIssuedKeys();
+      // 중복 제거 (key 기준)
+      const existingKeys = new Set(existing.map(x => x.key));
+      const newOnly = arr.filter(x => !existingKeys.has(x.key));
+      const merged = [...newOnly, ...existing];
+      localStorage.setItem(LS_ISSUED, JSON.stringify(merged));
+      alert('✅ 가져오기 완료: ' + newOnly.length + '개 신규 / ' + (arr.length - newOnly.length) + '개 중복 스킵');
+      renderIssuedHistory();
+    } catch(err) { alert('❌ 가져오기 실패: ' + err.message); }
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+</script>
+</body>
+</html>

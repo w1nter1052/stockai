@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+*.swp
+
+# Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# Node (only if using build tools later)
+node_modules/
+package-lock.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# Local backup files
+*_백업_*.html
+백업/
+backup/
+
+# Sensitive
+.env
+.env.local
+secrets.json
+*.key
+*.pem
+
+# Test artifacts
+coverage/
+.nyc_output/
