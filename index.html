@@ -8763,7 +8763,15 @@ window.Onboarding = (function(){
 
   function check(){
     if(localStorage.getItem(KEY) === '1') return;
-    setTimeout(show, 1500);
+    // 디스클레이머 동의 후에만 온보딩 표시 (모달 중첩 방지)
+    function tryShow(retries){
+      if(localStorage.getItem('sai_disclaimer_agreed_v2') === '1'){
+        show();
+      } else if(retries > 0){
+        setTimeout(()=>tryShow(retries-1), 1000);
+      }
+    }
+    setTimeout(()=>tryShow(60), 1500); // 최대 1분 대기
   }
 
   function reset(){
@@ -10709,6 +10717,10 @@ window.Disclaimer = (function(){
     localStorage.setItem(KEY,'1');
     document.getElementById('disclaimerModal')?.remove();
     if(typeof toast==='function') toast('환영합니다 👋','ok');
+    // 동의 후 온보딩 즉시 표시 (대기 중이었으면)
+    if(typeof Onboarding === 'object' && localStorage.getItem('sai_onboarded') !== '1'){
+      setTimeout(()=>Onboarding.show(), 300);
+    }
   }
   function decline(){
     document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:14px;padding:30px;text-align:center;font-family:Pretendard,sans-serif;"><div style="font-size:42px;">👋</div><div style="font-size:18px;font-weight:700;">동의하지 않으셨습니다.</div><div style="font-size:13px;color:#5F6368;line-height:1.65;">투자 책임 동의 없이는 서비스를 이용할 수 없습니다.</div><button onclick="location.reload()" style="margin-top:10px;padding:11px 24px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">다시 보기</button></div>';
