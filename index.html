@@ -8765,13 +8765,19 @@ window.Onboarding = (function(){
     if(localStorage.getItem(KEY) === '1') return;
     // 디스클레이머 동의 후에만 온보딩 표시 (모달 중첩 방지)
     function tryShow(retries){
+      // 이미 동의/완료 상태면 더 이상 시도하지 않음
+      if(localStorage.getItem(KEY) === '1') return;
+      // 이미 모달이 떠 있으면 건너뜀
+      if(document.getElementById('onbModal')) return;
       if(localStorage.getItem('sai_disclaimer_agreed_v2') === '1'){
         show();
-      } else if(retries > 0){
+        return; // ✅ 한 번만 표시
+      }
+      if(retries > 0){
         setTimeout(()=>tryShow(retries-1), 1000);
       }
     }
-    setTimeout(()=>tryShow(60), 1500); // 최대 1분 대기
+    setTimeout(()=>tryShow(30), 1500); // 최대 30초 대기
   }
 
   function reset(){
