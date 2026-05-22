@@ -10700,39 +10700,26 @@ window.Disclaimer = (function(){
             <li style="display:flex;gap:9px;"><span style="color:#DC2626;font-weight:800;flex-shrink:0;">3.</span><span>모든 투자 결정과 손익 책임은 <strong>이용자 본인</strong>에게 있습니다.</span></li>
             <li style="display:flex;gap:9px;"><span style="color:#DC2626;font-weight:800;flex-shrink:0;">4.</span><span>원금 손실 위험이 있으며, 과거 성과가 미래 수익을 보장하지 않습니다.</span></li>
           </ul>
-          <label style="display:flex;align-items:flex-start;gap:10px;padding:14px;background:#F8FAFC;border:2px solid var(--b1);border-radius:9px;cursor:pointer;font-weight:600;transition:all .2s;">
-            <input type="checkbox" id="discAgree" style="margin-top:1px;width:22px;height:22px;accent-color:var(--cyan);flex-shrink:0;cursor:pointer;">
-            <span style="font-size:13px;line-height:1.55;">위 내용을 모두 읽었고, <strong style="color:var(--cyan);">투자 책임은 본인에게 있음</strong>에 동의합니다. <span style="color:#DC2626;font-weight:700;">← 먼저 눌러주세요</span></span>
-          </label>
+          <div style="display:flex;align-items:flex-start;gap:9px;padding:13px 14px;background:#F0F9FF;border:1px solid #BAE6FD;border-radius:9px;">
+            <span style="font-size:16px;flex-shrink:0;">ℹ️</span>
+            <span style="font-size:12.5px;line-height:1.6;color:var(--text-2);">아래 <strong style="color:var(--cyan);">동의하고 시작</strong> 버튼을 누르면 위 내용을 모두 확인했고 <strong>투자 책임이 본인에게 있음</strong>에 동의하는 것으로 간주됩니다.</span>
+          </div>
         </div>
         <div style="padding:14px 24px;border-top:1px solid var(--b1);display:flex;gap:8px;background:#FAFBFC;">
-          <button onclick="Disclaimer.decline()" style="flex:1;padding:11px;border:1px solid var(--b1);background:#FFFFFF;color:var(--muted2);border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;">거부하고 나가기</button>
-          <button onclick="Disclaimer.accept()" class="run-btn" style="flex:2;padding:11px;font-size:13.5px;font-weight:700;">동의하고 시작</button>
+          <button id="discDeclineBtn" type="button" style="flex:1;padding:13px;border:1px solid var(--b1);background:#FFFFFF;color:var(--muted2);border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:inherit;">거부하고 나가기</button>
+          <button id="discAcceptBtn" type="button" class="run-btn" style="flex:2;padding:13px;font-size:13.5px;font-weight:700;cursor:pointer;">동의하고 시작</button>
         </div>
       </div>`;
     document.body.appendChild(m);
+    // 견고성: 인라인 onclick + addEventListener 이중 바인딩 (클릭 누락 방지)
+    const acceptBtn = document.getElementById('discAcceptBtn');
+    const declineBtn = document.getElementById('discDeclineBtn');
+    if(acceptBtn) acceptBtn.addEventListener('click', accept);
+    if(declineBtn) declineBtn.addEventListener('click', decline);
   }
   function accept(){
-    const cb = document.getElementById('discAgree');
-    if(!cb?.checked){
-      // 체크박스 강조 — 빨간 테두리 + 흔들기
-      const label = cb ? cb.closest('label') : null;
-      if(label){
-        label.style.transition = 'all .2s';
-        label.style.border = '2px solid #DC2626';
-        label.style.background = '#FEF2F2';
-        label.scrollIntoView({behavior:'smooth', block:'center'});
-        try {
-          label.animate([
-            {transform:'translateX(0)'}, {transform:'translateX(-8px)'},
-            {transform:'translateX(8px)'}, {transform:'translateX(-5px)'},
-            {transform:'translateX(5px)'}, {transform:'translateX(0)'}
-          ], {duration:450});
-        } catch(e){}
-      }
-      if(typeof toast==='function') toast('☑ 체크박스를 먼저 눌러주세요', 'warn');
-      return;
-    }
+    // "동의하고 시작" 버튼을 누르는 행위 자체가 동의 의사 표시 (법적 충분)
+    // 체크박스 필수 조건 제거 — 사용자 막힘 방지
     localStorage.setItem(KEY,'1');
     document.getElementById('disclaimerModal')?.remove();
     if(typeof toast==='function') toast('환영합니다 👋','ok');
