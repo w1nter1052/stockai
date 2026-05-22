@@ -10732,6 +10732,19 @@ window.Disclaimer = (function(){
 })();
 window.addEventListener('DOMContentLoaded', () => Disclaimer.check());
 
+// ══════════════════════════════════════════════════════
+// 🔧 모든 모달을 body 직속으로 이동 (페이지 안에 갇혀 안 보이는 버그 수정)
+// 모달이 페이지 div 안에 있으면, 그 페이지가 display:none일 때 모달도 0×0이 됨.
+// position:fixed여도 부모가 display:none이면 렌더링 안 됨.
+// ══════════════════════════════════════════════════════
+window.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.modal-ov').forEach(m => {
+    if(m.parentElement !== document.body){
+      document.body.appendChild(m);
+    }
+  });
+});
+
 
 // Phase 1.2: 매매 일지 (Trading Journal)
 window.TradingJournal = (function(){
