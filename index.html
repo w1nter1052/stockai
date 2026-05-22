@@ -8053,11 +8053,28 @@ ${realtimeBlock}
       throw lastErr || new Error('모든 AI 모델 시도 실패');
     }
     const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n');
-    let json;
+    let json = null;
     try {
-      const match = text.match(/\{[\s\S]*\}/);
-      json = match ? JSON.parse(match[0]) : null;
-    } catch(e){ throw new Error('AI 응답 파싱 실패 — JSON 형식이 아닙니다'); }
+      // 1차: 마크다운 코드블록 제거 + 첫{~마지막} 추출
+      let cleaned = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const js = cleaned.indexOf('{');
+      const je = cleaned.lastIndexOf('}');
+      if(js === -1 || je <= js) throw new Error('no-json-block');
+      let jsonStr = cleaned.slice(js, je + 1);
+      try {
+        json = JSON.parse(jsonStr);
+      } catch(e1){
+        // 2차: 문자열 값 내부 줄바꿈/제어문자 정리 후 재시도
+        var fixed = jsonStr.replace(/"((?:[^"\\]|\\.)*)"/g, function(m){
+          return m.replace(/[\u0000-\u001F]+/g, " ");
+        });
+        fixed = fixed.replace(/,(\s*[}\]])/g, "$1");
+        json = JSON.parse(fixed);
+      }
+    } catch(e){
+      console.error('[AI 분석] JSON 파싱 실패. 응답 원문 앞 800자:', text.slice(0, 800));
+      throw new Error('AI 응답 파싱 실패 — 다시 시도해주세요 (웹검색 OFF 권장)');
+    }
     if(!json) throw new Error('AI 응답에 JSON이 없습니다 (재시도 권장)');
     json._meta = {
       period: state.period, style: state.style, periodKr, styleKr, today, mode: state.mode,
