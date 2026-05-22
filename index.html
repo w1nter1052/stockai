@@ -8718,7 +8718,8 @@ window.Onboarding = (function(){
   const KEY = 'sai_onboarding_done';
 
   function show(){
-    if(document.getElementById('onbModal')) return;
+    if(localStorage.getItem(KEY) === '1') return;   // 이미 완료(건너뛰기/시작하기) 시 절대 재표시 안 함
+    if(document.getElementById('onbModal')) return;  // 이미 떠 있으면 중복 생성 안 함
     const m = document.createElement('div');
     m.id = 'onbModal';
     m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;';
@@ -8789,7 +8790,9 @@ window.Onboarding = (function(){
 
   return { show, finish, check, reset };
 })();
-window.addEventListener('DOMContentLoaded', function(){ Onboarding.check(); });
+// 온보딩 자동 표시 비활성화 — 노란 가이드 배너가 안내 역할 대체 (반복 출현 버그 회피)
+// 필요 시 설정에서 Onboarding.show() 수동 호출 가능
+// window.addEventListener('DOMContentLoaded', function(){ Onboarding.check(); });
 
 // ══════════════════════════════════
 // 🔍 시스템 자동 진단 (F12 없이 클릭 한 번)
@@ -10741,10 +10744,6 @@ window.Disclaimer = (function(){
     localStorage.setItem(KEY,'1');
     document.getElementById('disclaimerModal')?.remove();
     if(typeof toast==='function') toast('환영합니다 👋','ok');
-    // 동의 후 온보딩 즉시 표시 (대기 중이었으면)
-    if(typeof Onboarding === 'object' && localStorage.getItem('sai_onboarded') !== '1'){
-      setTimeout(()=>Onboarding.show(), 300);
-    }
   }
   function decline(){
     document.body.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:14px;padding:30px;text-align:center;font-family:Pretendard,sans-serif;"><div style="font-size:42px;">👋</div><div style="font-size:18px;font-weight:700;">동의하지 않으셨습니다.</div><div style="font-size:13px;color:#5F6368;line-height:1.65;">투자 책임 동의 없이는 서비스를 이용할 수 없습니다.</div><button onclick="location.reload()" style="margin-top:10px;padding:11px 24px;background:#2563EB;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">다시 보기</button></div>';
