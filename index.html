@@ -8025,7 +8025,8 @@ ${realtimeBlock}
       if(tried.has(model) || cancelled) continue;
       tried.add(model);
       const reqBody = {
-        model, max_tokens: 4096,
+        // 웹검색 ON 시 응답이 길어 JSON 잘림 방지 — 출력 토큰 한도 상향
+        model, max_tokens: useWebSearch ? 8192 : 5000,
         messages: [{role:'user', content: prompt}]
       };
       if(useWebSearch){
