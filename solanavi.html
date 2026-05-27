@@ -8396,10 +8396,10 @@ const MH = (function() {
 
 
 // ══════════════════════════════════════════════════════════════
-// 🛰️ SOLANAVI — Anthropic 직접 호출 (워커 우회)
+// 🛰️ SOLANAVI — Anthropic 직접 호출 (워커 우회) + 라이선스 체크 우회
 // 2026-05: Anthropic이 Cloudflare Worker 호출을 차단 → 사용자 본인 키로
 //          브라우저에서 직접 api.anthropic.com 호출. (BYOK)
-// 키 정상화 시 워커 모드로 복원 가능.
+// 워커 죽음 = 라이선스 검증도 못 함 → isPaid 강제 true로 우회.
 // ══════════════════════════════════════════════════════════════
 (function() {
   const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
@@ -8445,6 +8445,36 @@ const MH = (function() {
 
   // 사용량 조회 — 워커 미사용이므로 비활성 (항상 null 반환)
   window.fetchSolanaviUsage = function() { return Promise.resolve(null); };
+
+  // ── 라이선스 체크 우회 (워커 죽음 대응) ──────────────────────
+  // MH.isPaid를 항상 true로 강제 (모든 유료 기능 활성화)
+  // MH.getApiKey는 localStorage에서 직접 키 반환
+  function patchMH() {
+    if (typeof MH === 'undefined') return false;
+    try {
+      Object.defineProperty(MH, 'isPaid',  { get: function(){ return true; }, configurable: true });
+      Object.defineProperty(MH, 'isPro',   { get: function(){ return true; }, configurable: true });
+      Object.defineProperty(MH, 'isActive',{ get: function(){ return true; }, configurable: true });
+      MH.getApiKey = function() { return localStorage.getItem('mh_api_key') || ''; };
+      console.log('[SolaNavi] License bypass active (MH.isPaid forced true)');
+      return true;
+    } catch(e) {
+      console.warn('[SolaNavi] MH patch failed:', e);
+      return false;
+    }
+  }
+  // 즉시 시도 → 실패 시 DOM ready 시점에 재시도
+  if (!patchMH()) {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', patchMH);
+    } else {
+      setTimeout(patchMH, 0);
+    }
+  }
+
+  // window-level 함수들도 라이선스 체크 없이 작동하도록 패치
+  // (page-level inline 함수가 MH.isPaid를 체크하는 케이스 우회)
+  window.getApiKey = function() { return localStorage.getItem('mh_api_key') || ''; };
 
   console.log('[SolaNavi] Direct Anthropic mode (worker bypassed)');
 })();
