@@ -8405,6 +8405,22 @@ const MH = (function() {
   const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
   const _origFetch = window.fetch.bind(window);
 
+  // 통합 키 조회 — 솔라나비 우선 → 같은 도메인 stockai 키 자동 fallback
+  // stockai와 같은 GitHub Pages 도메인이므로 localStorage 공유 가능.
+  // 한 사이트에 등록하면 두 사이트 모두 사용. (자동 동기화)
+  function getStoredKey() {
+    var k = localStorage.getItem('mh_api_key');
+    if (k && k.length > 5 && k !== 'managed-by-server') return k.trim();
+    // Fallback: stockai 키
+    k = localStorage.getItem('sai_key');
+    if (k && k.length > 5) {
+      // 솔라나비 키로도 동기 저장 (다음 호출 즉시 사용)
+      try { localStorage.setItem('mh_api_key', k.trim()); } catch(e){}
+      return k.trim();
+    }
+    return '';
+  }
+
   window.fetch = function(input, init) {
     var url = typeof input === 'string' ? input : (input && input.url) || '';
 
@@ -8412,11 +8428,11 @@ const MH = (function() {
     if (url.indexOf('api.anthropic.com/v1/messages') !== -1) {
       try {
         var headers = new Headers((init && init.headers) || {});
-        // 헤더에 키가 있으면 그대로(키 검증 케이스), 없으면 localStorage에서
+        // 헤더에 키가 있으면 그대로(키 검증 케이스), 없으면 통합 키 조회
         var existingKey = headers.get('x-api-key');
-        var userKey = (existingKey && existingKey !== 'managed-by-server')
+        var userKey = (existingKey && existingKey !== 'managed-by-server' && existingKey.length > 5)
           ? existingKey
-          : (localStorage.getItem('mh_api_key') || '');
+          : getStoredKey();
 
         if (!userKey || userKey === 'managed-by-server') {
           var errBody = JSON.stringify({
@@ -8455,7 +8471,7 @@ const MH = (function() {
       Object.defineProperty(MH, 'isPaid',  { get: function(){ return true; }, configurable: true });
       Object.defineProperty(MH, 'isPro',   { get: function(){ return true; }, configurable: true });
       Object.defineProperty(MH, 'isActive',{ get: function(){ return true; }, configurable: true });
-      MH.getApiKey = function() { return localStorage.getItem('mh_api_key') || ''; };
+      MH.getApiKey = function() { return getStoredKey(); };
       console.log('[SolaNavi] License bypass active (MH.isPaid forced true)');
       return true;
     } catch(e) {
@@ -8474,7 +8490,8 @@ const MH = (function() {
 
   // window-level 함수들도 라이선스 체크 없이 작동하도록 패치
   // (page-level inline 함수가 MH.isPaid를 체크하는 케이스 우회)
-  window.getApiKey = function() { return localStorage.getItem('mh_api_key') || ''; };
+  // getStoredKey()를 사용 → 같은 도메인 stockai 키도 자동 fallback
+  window.getApiKey = function() { return getStoredKey(); };
 
   console.log('[SolaNavi] Direct Anthropic mode (worker bypassed)');
 })();
