@@ -4823,6 +4823,14 @@ window.WorkerProxy = (function(){
   const KEY_URL = 'sai_worker_url';
   // 2026-05-19: Anthropic이 Cloudflare Worker 호출을 차단 → Vercel Functions로 이전 (2026-07-02, 실제 호출 테스트 통과)
   const DEFAULT_URL = 'https://vercel-backend-silk-delta.vercel.app';
+  // 예전 Cloudflare Worker 시절에 localStorage에 저장해둔 사용자가 있으면
+  // (workers.dev 도메인), 새 Vercel 주소가 있어도 그 옛날 값이 계속 우선 적용돼 막힘 → 자동 정리
+  (function migrateOldWorkerUrl(){
+    try {
+      const stored = localStorage.getItem(KEY_URL);
+      if(stored && stored.includes('workers.dev')) localStorage.removeItem(KEY_URL);
+    } catch(e){}
+  })();
   // 세션 단위 가용성 캐시: 첫 호출에서 네트워크 실패 시 false로 전환 → 이후 자동으로 사용자 키 폴백
   let _available = null; // null=미확인, true=가용, false=불가
   function getWorkerUrl(){ return localStorage.getItem(KEY_URL) || DEFAULT_URL; }
@@ -8085,6 +8093,32 @@ ${realtimeBlock}
       realtimeCount: realtimePrices.length,
       requestedCount: realtimePrices.length
     };
+
+    // AI가 스스로 계산한 confidence·target·stop은 검산해보면 자기 공식과 안 맞을 때가 있어
+    // (예: rules_check 가중평균으로는 85%인데 AI가 64%라고 적는 식) — 코드가 직접 재계산해서 덮어씀
+    if(Array.isArray(json.stocks)){
+      json.stocks.forEach(function(s){
+        if(Array.isArray(s.rules_check) && s.rules_check.length > 0){
+          let totalW = 0, passedW = 0;
+          s.rules_check.forEach(function(rc){
+            const w = Number(rc.weight) || 0;
+            totalW += w;
+            if(rc.passed) passedW += w;
+          });
+          if(totalW > 0) s.confidence = Math.round(passedW / totalW * 100);
+        }
+        if(s.priceSource === '실시간' && s.current){
+          const cur = Number(String(s.current).replace(/,/g,''));
+          if(cur > 0){
+            const tpPct = (userRules?.takeProfit1Pct ?? 15) / 100;
+            const slPct = (userRules?.stopLossPct ?? 7) / 100;
+            s.target = Math.round(cur * (1 + tpPct)).toLocaleString();
+            s.stop   = Math.round(cur * (1 - slPct)).toLocaleString();
+          }
+        }
+      });
+    }
+
     return json;
   }
 
@@ -9165,31 +9199,49 @@ const MARKET_SYMBOLS = [
   {id:'usd',     symbol:'KRW=X',   label:'USD/KRW'},
 ];
 
-async function fetchYahooPrice(symbol){
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
-  try{
-    const r = await fetch(url, {headers:{'User-Agent':'Mozilla/5.0'}});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    const data = await r.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    if(!meta) return null;
-    return {
-      price: meta.regularMarketPrice,
-      prev:  meta.chartPreviousClose || meta.previousClose,
-      currency: meta.currency
-    };
-  }catch(e){
-    return null;
+// symbol: Yahoo 형식 심볼 (^KS11, 005930.KS 등). ticker6: KIS 조회용 6자리 종목코드(개별주만, 지수·환율은 null)
+async function fetchYahooPrice(symbol, ticker6){
+  // 개별 종목이면 KIS 실시간 시세 우선 시도 (Yahoo는 실측 20~50분 지연)
+  if(ticker6){
+    const kis = await tryKisPrice(ticker6);
+    if(kis) return { price: kis.price, prev: kis.prev, currency: 'KRW', source: 'KIS' };
   }
+
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
+  // 대시보드 시세바는 기존에 프록시 폴백이 없어서 브라우저 CORS 차단 시 전부 "—"로 뜨는 버그가 있었음 → getStockPrice와 동일한 폴백 체인 적용
+  const attempts = [
+    { url, direct: true },
+    { url: `https://corsproxy.io/?${encodeURIComponent(url)}` },
+    { url: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}` },
+    { url: `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}` },
+  ];
+  for(const att of attempts){
+    try{
+      const opts = { signal: AbortSignal.timeout(5000) };
+      if(att.direct) opts.headers = {'User-Agent':'Mozilla/5.0'};
+      const r = await fetch(att.url, opts);
+      if(!r.ok) continue;
+      const data = await r.json();
+      const meta = data?.chart?.result?.[0]?.meta;
+      if(!meta || !meta.regularMarketPrice) continue;
+      return {
+        price: meta.regularMarketPrice,
+        prev:  meta.chartPreviousClose || meta.previousClose,
+        currency: meta.currency,
+        source: 'Yahoo',
+      };
+    }catch(e){ continue; }
+  }
+  return null;
 }
 
 async function loadMarketData(){
   const updateEl = document.getElementById('mkt-update-time');
   if(updateEl) updateEl.textContent = '⏳ 로딩중';
 
-  // 병렬 조회
+  // 병렬 조회 (개별 종목은 id가 6자리 코드이므로 KIS 우선 시도에 사용)
   const results = await Promise.all(
-    MARKET_SYMBOLS.map(async s => ({...s, data: await fetchYahooPrice(s.symbol)}))
+    MARKET_SYMBOLS.map(async s => ({...s, data: await fetchYahooPrice(s.symbol, /^\d{6}$/.test(s.id) ? s.id : null)}))
   );
 
   results.forEach(s => {
@@ -9266,8 +9318,30 @@ function toYahooSymbol(ticker, market){
   return t + suffix;
 }
 
+// KIS(한국투자증권) 실시간 시세 — Yahoo(실측 20~50분 지연)보다 우선 시도.
+// KIS_APP_KEY 미등록 시 서버가 501을 주므로 즉시 Yahoo 체인으로 폴백.
+// 반환: { price, prev, changePct } 또는 null (미설정·실패 시)
+async function tryKisPrice(ticker){
+  if(!/^\d{1,6}$/.test(String(ticker||''))) return null; // 6자리 국내 종목코드만
+  const workerUrl = (window.WorkerProxy && WorkerProxy.getWorkerUrl && WorkerProxy.getWorkerUrl()) || '';
+  if(!workerUrl) return null;
+  try{
+    const r = await fetch(workerUrl + '/price?symbol=' + String(ticker).padStart(6,'0'), { signal: AbortSignal.timeout(4000) });
+    if(!r.ok) return null;
+    const data = await r.json();
+    if(data.price > 0){
+      console.log('[LivePrice] KIS 실시간 사용:', ticker, '=', data.price);
+      return { price: Math.round(data.price), prev: data.prevClose || null, changePct: data.changePct ?? null };
+    }
+  }catch(e){ /* KIS 미설정·실패 시 조용히 폴백 */ }
+  return null;
+}
+
 // Yahoo Finance API로 현재가 조회 (다중 CORS 프록시 폴백)
 async function getStockPrice(ticker, market){
+  const kis = await tryKisPrice(ticker);
+  if(kis) return kis.price;
+
   const symbol = toYahooSymbol(ticker, market);
   if(!symbol) return null;
 
@@ -9289,9 +9363,9 @@ async function getStockPrice(ticker, market){
       const data = await r.json();
       const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
       if(price && price > 0){
-        // 사용된 프록시 기록 (디버깅용)
+        // 사용된 프록시 기록 (디버깅용, Yahoo는 여전히 지연 데이터임을 유의)
         if(att.type !== 'direct' && typeof console !== 'undefined'){
-          console.log('[LivePrice] 프록시 사용:', att.type, symbol, '=', price);
+          console.log('[LivePrice] Yahoo 프록시 사용(지연 데이터):', att.type, symbol, '=', price);
         }
         return Math.round(price);
       }
