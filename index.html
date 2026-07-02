@@ -4821,10 +4821,8 @@ function getAIModel(){
 // ══════════════════════════════════════════════════════
 window.WorkerProxy = (function(){
   const KEY_URL = 'sai_worker_url';
-  // ⚠️ 2026-05-19: Anthropic이 Cloudflare Worker 호출을 차단하기 시작.
-  // 임시로 Worker 자동 연결 비활성화 → 사용자가 본인 API 키 등록 사용.
-  // Worker 정상화되면 'https://stockai-proxy.hnsane.workers.dev'로 복원.
-  const DEFAULT_URL = '';
+  // 2026-05-19: Anthropic이 Cloudflare Worker 호출을 차단 → Vercel Functions로 이전 (2026-07-02, 실제 호출 테스트 통과)
+  const DEFAULT_URL = 'https://vercel-backend-silk-delta.vercel.app';
   // 세션 단위 가용성 캐시: 첫 호출에서 네트워크 실패 시 false로 전환 → 이후 자동으로 사용자 키 폴백
   let _available = null; // null=미확인, true=가용, false=불가
   function getWorkerUrl(){ return localStorage.getItem(KEY_URL) || DEFAULT_URL; }

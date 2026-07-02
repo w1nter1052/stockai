@@ -132,6 +132,20 @@ export default {
     if(url.pathname === '/health') {
       return new Response(JSON.stringify({ ok: true, service: 'stockai-proxy', time: new Date().toISOString() }), { headers: { ...cors, 'Content-Type': 'application/json' } });
     }
+    if(url.pathname === '/debug') {
+      const k = env.ANTHROPIC_API_KEY || '';
+      return new Response(JSON.stringify({
+        keyExists: !!k,
+        keyLength: k.length,
+        keyStart: k.slice(0, 12),
+        keyEnd: k.slice(-5),
+        hasWhitespace: k !== k.trim(),
+        startsWithCorrectPrefix: k.startsWith('sk-ant-'),
+        kvBound: !!env.LICENSE_KV,
+        adminSecretSet: !!env.ADMIN_SECRET,
+        time: new Date().toISOString()
+      }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     return new Response(JSON.stringify({ error: 'not found' }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 };
@@ -155,14 +169,22 @@ async function handleAnthropicProxy(request, env, cors) {
       }), { status: 429, headers: { ...cors, 'Content-Type': 'application/json', 'x-sai-plan': plan, 'x-sai-usage': String(usage), 'x-sai-limit': String(limits.ai) } });
     }
 
-    // Anthropic API 호출
-    const body = await request.json();
+    // Anthropic API 호출 — 솔라나비와 동일 형식 (JSON 재구성 없이 raw body 전달)
+    const apiKey = (env.ANTHROPIC_API_KEY || '').trim();
+    if(!apiKey){
+      return new Response(JSON.stringify({ error: 'Worker 설정 오류: ANTHROPIC_API_KEY 환경변수가 비어있습니다.' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+    let body;
+    try { body = await request.json(); }
+    catch(e){
+      return new Response(JSON.stringify({ error: 'invalid_body', message: 'JSON body 파싱 실패' }), { status: 400, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': env.ANTHROPIC_API_KEY,
-        'anthropic-version': request.headers.get('anthropic-version') || '2023-06-01'
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify(body)
     });
