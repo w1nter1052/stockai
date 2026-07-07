@@ -7882,6 +7882,8 @@ window.UnifiedAnalysis = (function(){
     let realtimePrices = [];
     let priceFetchedAt = null;
     let priceSource = 'AI 추정';
+    // 사이클 #23: 실제 기술지표 사전 수집 (RSI·이평선·거래량 — 예전엔 AI가 그럴듯하게 지어냈음)
+    let technicals = null;
     if(state.mode === 'stock' && state.stockCode && state.stockCode !== '직접입력'){
       try {
         const market = state.market === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
@@ -7889,9 +7891,19 @@ window.UnifiedAnalysis = (function(){
         if(prices[state.stockCode]){
           realtimePrices.push({ name: state.stockName, code: state.stockCode, market, price: prices[state.stockCode] });
           priceFetchedAt = Date.now();
-          priceSource = 'Yahoo Finance (15분 지연)';
+          priceSource = 'KIS 실시간 (미가용 시 Yahoo 지연 폴백)';
         }
       } catch(e){ console.warn('실시간 시세 조회 실패:', e); }
+      try {
+        const workerUrl = (window.WorkerProxy && WorkerProxy.getWorkerUrl && WorkerProxy.getWorkerUrl()) || '';
+        if(workerUrl){
+          const r = await fetch(workerUrl + '/technicals?symbol=' + state.stockCode, { signal: AbortSignal.timeout(6000) });
+          if(r.ok){
+            const t = await r.json();
+            if(!t.error) technicals = t;
+          }
+        }
+      } catch(e){ console.warn('기술지표 조회 실패:', e); }
     } else if(state.mode === 'theme'){
       const THEME_STOCKS = {
         semi: [['005930','삼성전자','KOSPI'],['000660','SK하이닉스','KOSPI'],['042700','한미반도체','KOSPI']],
@@ -7914,7 +7926,7 @@ window.UnifiedAnalysis = (function(){
           });
           if(realtimePrices.length > 0){
             priceFetchedAt = Date.now();
-            priceSource = 'Yahoo Finance (15분 지연)';
+            priceSource = 'KIS 실시간 (미가용 시 Yahoo 지연 폴백)';
           }
         } catch(e){ console.warn('테마 시세 조회 실패:', e); }
       }
@@ -7940,6 +7952,11 @@ window.UnifiedAnalysis = (function(){
       ? `\n## ⚡ 실시간 시세 (반드시 이 값을 current로 사용, 추정 금지)\n출처: ${priceSource} · 조회: ${new Date(priceFetchedAt).toLocaleString('ko-KR',{timeZone:'Asia/Seoul'})}\n${realtimePrices.map(p => `- ${p.name} (${p.code}, ${p.market}): ${p.price.toLocaleString()}원`).join('\n')}\n`
       : `\n## ⚠️ 실시간 시세 미확보\n실측 가격을 가져오지 못했습니다. current 값은 "추정" 표시하고, AI 학습 데이터 기반 추정값임을 stocks[].priceSource 필드에 "AI 추정"으로 명시하세요.\n`;
 
+    // 사이클 #23: 실제 계산된 기술지표를 프롬프트에 주입 (지어내지 못하게 원천 차단)
+    const technicalsBlock = technicals
+      ? `\n## 📐 실제 기술지표 (KIS 일봉 ${technicals.barsUsed}개로 직접 계산, ${technicals.latestDate} 기준 — 반드시 이 값을 rules_check의 actual에 그대로 사용, 추정/변형 금지)\n- RSI(14): ${technicals.rsi14}\n- 5일선: ${technicals.ma5?.toLocaleString()}원 / 20일선: ${technicals.ma20?.toLocaleString()}원 (정배열 ma5>ma20: ${technicals.maAligned ? '예' : '아니오'})\n- 거래량 vs 20일 평균: ${technicals.volumeVsAvg20Pct > 0 ? '+' : ''}${technicals.volumeVsAvg20Pct}%\n`
+      : `\n## ⚠️ 기술지표 미확보\nRSI·이평선·거래량 실측치를 가져오지 못했습니다. rules_check의 기술적/수급/추세 항목은 반드시 actual에 "AI 추정"이라고 명시하세요 (실측인 것처럼 구체적 숫자를 지어내지 마세요).\n`;
+
     const prompt = `당신은 한국 주식 시장 분석가입니다. 사용자의 명시적 트레이딩 룰을 기준으로 평가하세요.
 일반론적 추천 금지. 사용자가 설정한 룰이 통과하는지 명시적으로 체크하세요.
 
@@ -7951,7 +7968,7 @@ ${rulesSummary}
 현재 시각 (KST): ${nowKST}
 투자 기간: ${periodKr}
 스타일: ${styleKr}
-${realtimeBlock}
+${realtimeBlock}${technicalsBlock}
 
 ## 출력 형식 (반드시 순수 JSON, 코드블록 없이):
 {
@@ -8005,6 +8022,8 @@ ${realtimeBlock}
    - 위 "⚡ 실시간 시세"에 종목 가격이 있으면 → **그 값을 current에 그대로 사용**, priceSource="실시간"
    - 실시간 시세가 없는 종목 → AI 학습 데이터로 추정, priceSource="AI 추정", current에 추정값 명시
 2. rules_check 배열은 **종목마다 5~6개** 명시적 룰 체크. 각 룰의 "passed"는 true/false, "actual"은 실제 측정값.
+   - 위 "📐 실제 기술지표"가 있으면 RSI·이평선·거래량 관련 룰의 actual은 **그 값을 그대로 사용** (지어내지 말 것)
+   - "기술지표 미확보"면 해당 항목 actual에 "AI 추정"이라고 명시
 3. confidence는 통과한 룰의 weight 합 / 전체 weight × 100 으로 계산 (반드시 정수).
 4. target/stop은 사용자 룰 + current 기반: target = current × (1 + ${userRules?.takeProfit1Pct||15}/100), stop = current × (1 - ${userRules?.stopLossPct||7}/100)
 5. position_size_pct는 사용자 maxPositionPct 이하.
@@ -8098,6 +8117,28 @@ ${realtimeBlock}
     // (예: rules_check 가중평균으로는 85%인데 AI가 64%라고 적는 식) — 코드가 직접 재계산해서 덮어씀
     if(Array.isArray(json.stocks)){
       json.stocks.forEach(function(s){
+        // 사이클 #23: RSI·이평선·거래량 룰의 pass/fail도 AI 판단 대신 실측치로 재검증
+        if(technicals && Array.isArray(s.rules_check)){
+          s.rules_check.forEach(function(rc){
+            const ruleText = String(rc.rule || '');
+            const rsiMatch = ruleText.match(/RSI\s*([<>])\s*(\d+)/i);
+            if(rsiMatch && technicals.rsi14 != null){
+              const op = rsiMatch[1], threshold = Number(rsiMatch[2]);
+              rc.passed = op === '<' ? technicals.rsi14 < threshold : technicals.rsi14 > threshold;
+              rc.actual = String(technicals.rsi14);
+            }
+            if(/이평선|ma\s*5.*ma\s*20|ma\s*20.*ma\s*5/i.test(ruleText) && technicals.maAligned != null){
+              rc.passed = technicals.maAligned;
+              rc.actual = `5일선(${technicals.ma5?.toLocaleString()}) ${technicals.maAligned ? '>' : '<'} 20일선(${technicals.ma20?.toLocaleString()})`;
+            }
+            const volMatch = ruleText.match(/거래량.*?([+-]?\d+)\s*%/);
+            if(volMatch && technicals.volumeVsAvg20Pct != null){
+              const threshold = Number(volMatch[1]);
+              rc.passed = technicals.volumeVsAvg20Pct > threshold;
+              rc.actual = (technicals.volumeVsAvg20Pct > 0 ? '+' : '') + technicals.volumeVsAvg20Pct + '%';
+            }
+          });
+        }
         if(Array.isArray(s.rules_check) && s.rules_check.length > 0){
           let totalW = 0, passedW = 0;
           s.rules_check.forEach(function(rc){
@@ -8266,7 +8307,7 @@ ${realtimeBlock}
     const dataAsOf = r._meta?.dataAsOf || r.dataAsOf || '';
     const priceSource = r._meta?.priceSource || 'AI 추정';
     const realtimeCount = r._meta?.realtimeCount || 0;
-    const isLive = priceSource && priceSource.indexOf('Yahoo') === 0;
+    const isLive = !!priceSource && priceSource !== 'AI 추정' && realtimeCount > 0;
     const asOfBanner = `
       <div class="data-asof-banner ${isLive?'asof-live':'asof-estimate'}">
         <div class="asof-icon">${isLive?'🟢':'⚠️'}</div>
