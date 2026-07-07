@@ -7848,6 +7848,8 @@ window.UnifiedAnalysis = (function(){
       renderReport(report);
       // 히스토리 자동 저장
       saveToHistory(report);
+      // 사이클 #24: 서버에 신호 기록 (성과 추적용, 실패해도 화면엔 영향 없음)
+      recordPredictions(report);
     } catch(e){
       clearInterval(progressTimer);
       if(cancelled){ return; }
@@ -8335,6 +8337,10 @@ ${realtimeBlock}${technicalsBlock}
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>저장</span>
           </button>
+          <button class="ra-btn" onclick="openAiTrackRecord()" title="지금까지 AI 신호의 실제 적중률">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <span>AI 적중률</span>
+          </button>
           <button class="ra-btn ra-btn-primary" onclick="UnifiedAnalysis.reset()" title="새 분석 시작">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
             <span>새 분석</span>
@@ -8461,6 +8467,25 @@ ${realtimeBlock}${technicalsBlock}
       list.pop(); try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch(e2){}
     }
     updateHistoryBadge();
+  }
+  // 사이클 #24: AI 판단 성과 추적 — 실시간 시세 기반 신호만 서버에 기록
+  // (AI 추정 가격 기반 신호는 나중에 실제 시세와 비교해도 의미가 없어 제외)
+  function recordPredictions(report){
+    const workerUrl = (window.WorkerProxy && WorkerProxy.getWorkerUrl && WorkerProxy.getWorkerUrl()) || '';
+    if(!workerUrl || !Array.isArray(report?.stocks)) return;
+    report.stocks.forEach(function(s){
+      if(s.priceSource !== '실시간' || !s.code || !s.signal || !s.current) return;
+      const price = Number(String(s.current).replace(/,/g,''));
+      if(!price || price <= 0) return;
+      fetch(workerUrl + '/predictions/record', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          symbol: s.code, name: s.name || '', market: s.market || 'KOSPI',
+          signal: s.signal, confidence: s.confidence || null, price, period: state.period,
+        }),
+      }).catch(function(){ /* 성과 기록 실패는 조용히 무시 — 분석 결과 화면엔 영향 없음 */ });
+    });
   }
   function updateHistoryBadge(){
     const list = loadHistory();
@@ -11423,6 +11448,64 @@ window.saveJournalEntry = function(){
   document.getElementById('journalAddForm').remove();
   openTradingJournal();
   if(typeof toast==='function') toast('📔 거래 기록 추가됨','ok');
+};
+
+// 사이클 #24: AI 판단 성과 추적 — 전 사용자 통합 적중률 (서버 집계)
+window.openAiTrackRecord = async function(){
+  const m = document.createElement('div');
+  m.id = 'aiTrackModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.innerHTML = `<div style="position:relative;background:#FFFFFF;border-radius:14px;max-width:520px;width:100%;padding:28px;text-align:center;">
+    <div style="font-size:1.5rem;margin-bottom:8px;">📡</div>
+    <div style="font-size:13px;color:var(--muted2);">불러오는 중...</div>
+  </div>`;
+  document.body.appendChild(m);
+
+  const workerUrl = (window.WorkerProxy && WorkerProxy.getWorkerUrl && WorkerProxy.getWorkerUrl()) || '';
+  let data = null;
+  try {
+    if(workerUrl){
+      const r = await fetch(workerUrl + '/predictions/stats', { signal: AbortSignal.timeout(6000) });
+      if(r.ok) data = await r.json();
+    }
+  } catch(e){ /* 아래에서 미확보 처리 */ }
+
+  const box = m.querySelector('div');
+  if(!data || !data.ok){
+    box.innerHTML = `
+      <button onclick="document.getElementById('aiTrackModal').remove()" style="position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted2);font-size:20px;cursor:pointer;">✕</button>
+      <div style="font-size:1.5rem;margin-bottom:8px;">📡</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:6px;">아직 통계를 불러올 수 없어요</div>
+      <div style="font-size:12.5px;color:var(--muted2);line-height:1.7;">AI 분석을 몇 번 더 실행하고 1일 이상 지나면<br>실제 적중률이 여기 쌓이기 시작합니다.</div>`;
+    return;
+  }
+
+  const per = data.summary || {};
+  const row = (label, key) => {
+    const s = per[key] || {};
+    const rate = s.hitRate != null ? s.hitRate + '%' : '—';
+    const ret = s.avgReturnPct != null ? (s.avgReturnPct > 0 ? '+' : '') + s.avgReturnPct + '%' : '—';
+    const retColor = s.avgReturnPct > 0 ? 'var(--up,#16A34A)' : s.avgReturnPct < 0 ? 'var(--dn,#DC2626)' : 'var(--muted2)';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--b1,#EEE);">
+      <div style="font-size:13px;font-weight:600;">${label}</div>
+      <div style="text-align:right;">
+        <div style="font-size:15px;font-weight:800;">${rate} <span style="font-size:11px;font-weight:500;color:var(--muted2);">적중 (${s.checkedCount||0}건)</span></div>
+        <div style="font-size:11.5px;color:${retColor};">평균 수익률 ${ret}</div>
+      </div>
+    </div>`;
+  };
+
+  box.innerHTML = `
+    <button onclick="document.getElementById('aiTrackModal').remove()" style="position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted2);font-size:20px;cursor:pointer;">✕</button>
+    <div style="font-size:11px;font-weight:700;color:var(--cyan);letter-spacing:.06em;margin-bottom:3px;">TRACK RECORD</div>
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px;">📡 AI 판단 성과 추적</div>
+    <div style="font-size:11.5px;color:var(--muted2);margin-bottom:14px;">누적 신호 ${data.totalPredictions}건 · 관찰(방향성 없음) 신호는 적중률 계산에서 제외</div>
+    <div style="text-align:left;">
+      ${row('1일 후', 'd1')}
+      ${row('7일 후', 'd7')}
+      ${row('30일 후', 'd30')}
+    </div>
+    <div style="font-size:11px;color:var(--muted2);margin-top:12px;line-height:1.6;">과거 적중률이 미래 수익을 보장하지 않습니다. 참고용 지표입니다.</div>`;
 };
 
 // Phase 1.3 UI: 수익률 대시보드
