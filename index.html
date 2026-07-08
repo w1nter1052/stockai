@@ -3041,6 +3041,12 @@ option{background:var(--s2);}
   </div>
   <div class="scroll">
 
+    <!-- 사이클 #25: 계정 (Supabase 회원 DB 동기화) -->
+    <div class="card" id="accountCard">
+      <div class="card-head"><div class="card-title">👤 계정</div></div>
+      <div class="card-body" id="accountCardBody"></div>
+    </div>
+
     <!-- 사이클 #16-h: 단축 카드 — AI 키 미등록 시만 큰 카드, 등록 후 작은 인디케이터로 변환 -->
     <div id="settingsShortcuts"></div>
 
@@ -4799,9 +4805,105 @@ function addMsg(role,html,retId=false){
 // ══════════════════════════════════
 const DB = {
   get(k){ try{ return JSON.parse(localStorage.getItem('sai_'+k)||'null'); }catch(e){ return null; } },
-  set(k,v){ try{ localStorage.setItem('sai_'+k, JSON.stringify(v)); }catch(e){} },
-  del(k){ localStorage.removeItem('sai_'+k); }
+  set(k,v){ try{ localStorage.setItem('sai_'+k, JSON.stringify(v)); }catch(e){} if(window.CloudSync) CloudSync.schedulePush(); },
+  del(k){ localStorage.removeItem('sai_'+k); if(window.CloudSync) CloudSync.schedulePush(); }
 };
+
+// ══════════════════════════════════
+// 사이클 #25: 회원 DB (Supabase) — 로그인하면 sai_* 데이터를 클라우드에 동기화
+// SDK 없이 REST API 직접 호출 (앱 전체가 외부 스크립트 의존성 0인 원칙 유지)
+// ══════════════════════════════════
+window.CloudSync = (function(){
+  const SUPABASE_URL = 'https://ccwjkjrqrcgtjipcdiwg.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjd2pranJxcmNndGppcGNkaXdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMzOTM4ODksImV4cCI6MjA5ODk2OTg4OX0.SaRu4zlcnoTVSJ2YWZEXx07KDw8JRRQqZ6sqPqdQLKA';
+  const SESSION_KEY = 'sai_cloud_session';
+
+  function getSession(){ try{ return JSON.parse(localStorage.getItem(SESSION_KEY)||'null'); }catch(e){ return null; } }
+  function setSession(s){ if(s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); }
+  function isLoggedIn(){ return !!getSession()?.access_token; }
+
+  async function api(path, opts){
+    opts = opts || {};
+    opts.headers = Object.assign({ 'Content-Type':'application/json', apikey: SUPABASE_ANON_KEY }, opts.headers||{});
+    const r = await fetch(SUPABASE_URL + path, opts);
+    let j = {}; try{ j = await r.json(); }catch(e){}
+    if(!r.ok) throw new Error(j.error_description || j.msg || j.error || j.message || ('HTTP '+r.status));
+    return j;
+  }
+
+  async function onAuthSuccess(j){
+    setSession({ access_token:j.access_token, refresh_token:j.refresh_token, user:j.user, obtainedAt:Date.now(), expiresIn:j.expires_in||3600 });
+    await pullFromCloud();
+  }
+
+  async function signUp(email, password){
+    const j = await api('/auth/v1/signup', { method:'POST', body: JSON.stringify({email, password}) });
+    if(j.access_token) await onAuthSuccess(j);
+    return j;
+  }
+  async function signIn(email, password){
+    const j = await api('/auth/v1/token?grant_type=password', { method:'POST', body: JSON.stringify({email, password}) });
+    await onAuthSuccess(j);
+    return j;
+  }
+  function signOut(){ setSession(null); }
+
+  async function ensureFreshToken(){
+    const s = getSession();
+    if(!s) return null;
+    const expiresAt = s.obtainedAt + (s.expiresIn||3600)*1000;
+    if(Date.now() < expiresAt - 60000) return s.access_token;
+    try {
+      const j = await api('/auth/v1/token?grant_type=refresh_token', { method:'POST', body: JSON.stringify({refresh_token:s.refresh_token}) });
+      setSession({ access_token:j.access_token, refresh_token:j.refresh_token, user:j.user||s.user, obtainedAt:Date.now(), expiresIn:j.expires_in||3600 });
+      return j.access_token;
+    } catch(e){ setSession(null); return null; }
+  }
+
+  // sai_* 전체를 원본 문자열 그대로 스냅샷 (이중 JSON 인코딩 문제 방지)
+  function collectSnapshot(){
+    const data = {};
+    for(let i=0;i<localStorage.length;i++){
+      const k = localStorage.key(i);
+      if(k && k.startsWith('sai_') && k !== SESSION_KEY) data[k] = localStorage.getItem(k);
+    }
+    return data;
+  }
+  function restoreSnapshot(data){
+    Object.entries(data||{}).forEach(([k,v]) => { if(k.startsWith('sai_') && k !== SESSION_KEY) localStorage.setItem(k, v); });
+  }
+
+  async function pullFromCloud(){
+    const token = await ensureFreshToken();
+    const s = getSession();
+    if(!token || !s?.user?.id) return;
+    try {
+      const rows = await api('/rest/v1/user_data?user_id=eq.'+s.user.id+'&select=data', { headers:{ Authorization:'Bearer '+token } });
+      if(Array.isArray(rows) && rows[0]?.data) restoreSnapshot(rows[0].data);
+    } catch(e){ console.warn('[CloudSync] 클라우드 데이터 불러오기 실패:', e.message); }
+  }
+
+  let pushTimer = null;
+  function schedulePush(){
+    if(!isLoggedIn()) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushToCloud, 3000);
+  }
+  async function pushToCloud(){
+    const token = await ensureFreshToken();
+    const s = getSession();
+    if(!token || !s?.user?.id) return;
+    try {
+      await api('/rest/v1/user_data', {
+        method: 'POST',
+        headers: { Authorization:'Bearer '+token, Prefer:'resolution=merge-duplicates' },
+        body: JSON.stringify({ user_id: s.user.id, data: collectSnapshot() }),
+      });
+    } catch(e){ console.warn('[CloudSync] 클라우드 저장 실패:', e.message); }
+  }
+
+  return { signUp, signIn, signOut, isLoggedIn, getSession, schedulePush, pullFromCloud };
+})();
 
 // ══════════════════════════════════
 // AI 모델 ID (사용자가 설정에서 변경 가능)
@@ -9223,6 +9325,7 @@ if(typeof _origGoto === 'function'){
       setTimeout(() => {
         if(typeof renderStrategyPresetGrid === 'function') renderStrategyPresetGrid();
         if(typeof renderCurrentRulesSummary === 'function') renderCurrentRulesSummary();
+        if(typeof renderAccountCard === 'function') renderAccountCard();
       }, 100);
     }
     if(id === 'analysis' || id === 'signals'){
@@ -9686,6 +9789,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   const wsToggle = document.getElementById('useWebSearch');
   if(wsToggle) wsToggle.addEventListener('change', updateWebSearchUI);
   updateWebSearchUI();
+  // 사이클 #25: 로그인 상태면 클라우드 데이터 동기화 (세션당 1회, 받아온 뒤 새로고침으로 반영)
+  (async function(){
+    if(!window.CloudSync || !CloudSync.isLoggedIn()) return;
+    if(sessionStorage.getItem('sai_cloud_synced')) return;
+    sessionStorage.setItem('sai_cloud_synced', '1');
+    await CloudSync.pullFromCloud();
+    location.reload();
+  })();
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -11506,6 +11617,75 @@ window.openAiTrackRecord = async function(){
       ${row('30일 후', 'd30')}
     </div>
     <div style="font-size:11px;color:var(--muted2);margin-top:12px;line-height:1.6;">과거 적중률이 미래 수익을 보장하지 않습니다. 참고용 지표입니다.</div>`;
+};
+
+// 사이클 #25: 계정 카드 (로그인 상태 표시)
+function renderAccountCard(){
+  const el = document.getElementById('accountCardBody');
+  if(!el) return;
+  const s = CloudSync.getSession();
+  if(s?.user?.email){
+    el.innerHTML = `
+      <div style="font-size:13px;font-weight:700;margin-bottom:3px;">✅ ${s.user.email}</div>
+      <div style="font-size:11.5px;color:var(--muted2);margin-bottom:12px;">클라우드 동기화 활성 — 다른 기기에서 로그인하면 이어집니다</div>
+      <button class="run-btn run-btn-sm run-btn-ghost" onclick="cloudLogout()">로그아웃</button>`;
+  } else {
+    el.innerHTML = `
+      <div style="font-size:12.5px;color:var(--muted2);line-height:1.7;margin-bottom:12px;">로그인하면 포트폴리오·설정·기록이 클라우드에 저장돼서 다른 기기에서도 이어집니다.</div>
+      <div style="display:flex;gap:8px;">
+        <button class="run-btn run-btn-sm" onclick="openAuthModal('signin')">로그인</button>
+        <button class="run-btn run-btn-sm run-btn-ghost" onclick="openAuthModal('signup')">회원가입</button>
+      </div>`;
+  }
+}
+function cloudLogout(){
+  if(!confirm('로그아웃할까요? (이 기기의 데이터는 그대로 남아있습니다)')) return;
+  CloudSync.signOut();
+  renderAccountCard();
+  if(typeof toast==='function') toast('로그아웃됨');
+}
+
+window.openAuthModal = function(mode){
+  const m = document.createElement('div');
+  m.id = 'authModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.innerHTML = `<div style="position:relative;background:#FFFFFF;border-radius:14px;max-width:380px;width:100%;padding:28px;">
+    <button onclick="document.getElementById('authModal').remove()" style="position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted2);font-size:20px;cursor:pointer;">✕</button>
+    <div style="font-size:17px;font-weight:800;margin-bottom:4px;" id="authModalTitle">${mode==='signup' ? '회원가입' : '로그인'}</div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:18px;">이메일로 ${mode==='signup' ? '가입하고 데이터를 클라우드에 저장하세요' : '로그인하세요'}</div>
+    <label style="display:block;font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;">이메일</label>
+    <input id="authEmail" type="email" placeholder="you@example.com" style="width:100%;padding:10px 12px;border:1px solid var(--b1);border-radius:8px;font-size:13px;margin-bottom:12px;box-sizing:border-box;">
+    <label style="display:block;font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px;">비밀번호 (6자 이상)</label>
+    <input id="authPassword" type="password" placeholder="••••••••" style="width:100%;padding:10px 12px;border:1px solid var(--b1);border-radius:8px;font-size:13px;margin-bottom:16px;box-sizing:border-box;">
+    <button class="run-btn" id="authSubmitBtn" style="width:100%;" onclick="submitAuth('${mode}')">${mode==='signup' ? '가입하기' : '로그인'}</button>
+    <div id="authError" style="font-size:12px;color:var(--red,#DC2626);margin-top:10px;"></div>
+    <div style="font-size:12px;color:var(--muted2);margin-top:14px;text-align:center;">
+      ${mode==='signup' ? '이미 계정이 있으신가요?' : '계정이 없으신가요?'}
+      <a href="#" onclick="document.getElementById('authModal').remove();openAuthModal('${mode==='signup'?'signin':'signup'}');return false;" style="color:var(--cyan,#00A0C8);font-weight:600;">${mode==='signup' ? '로그인' : '회원가입'}</a>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+};
+
+window.submitAuth = async function(mode){
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errEl = document.getElementById('authError');
+  const btn = document.getElementById('authSubmitBtn');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = '이메일과 비밀번호를 입력하세요.'; return; }
+  if(password.length < 6){ errEl.textContent = '비밀번호는 6자 이상이어야 합니다.'; return; }
+  btn.disabled = true; btn.textContent = '처리 중...';
+  try {
+    if(mode === 'signup') await CloudSync.signUp(email, password);
+    else await CloudSync.signIn(email, password);
+    document.getElementById('authModal')?.remove();
+    renderAccountCard();
+    if(typeof toast==='function') toast(mode==='signup' ? '✅ 가입 완료! 데이터가 동기화됩니다' : '✅ 로그인됨');
+  } catch(e){
+    errEl.textContent = e.message || '오류가 발생했습니다.';
+    btn.disabled = false; btn.textContent = mode==='signup' ? '가입하기' : '로그인';
+  }
 };
 
 // Phase 1.3 UI: 수익률 대시보드
